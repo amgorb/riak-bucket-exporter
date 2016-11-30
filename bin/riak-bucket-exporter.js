@@ -48,22 +48,46 @@ function importToBucket() {
   if (!fs.existsSync(program.file)) {
     throw new Error('the import file does not exist');
   }
+
   fs.readFile(program.file, 'utf8', function (err,data) {
     if (err) {
       return console.log(err);
     }
-    var entries = JSON.parse(data);
+    var entries = data.split('\r\n');
     async.eachLimit(entries, program.concurrency, function(entry, cb) {
-      console.log('inserting entry with key %j', entry.key);
-      var meta = {index: entry.indexes};
-      if(entry.meta){
-        meta = entry.meta;
-      }
-      db.save(bucket, entry.key, entry.data, meta, function(err) {
-        if (err) {
-          return cb(err);
+      try{
+        if(!entry || !entry.trim()){
+          return cb();
         }
-        cb(null);
+
+        entry = JSON.parse(entry);
+
+        if(typeof entry.data !== typeof {}){
+          entry.data = new Buffer(entry.data, 'base64').toString();
+        }
+        else{
+          entry.data = JSON.stringify(entry.data);
+        }
+      }
+      catch(err){
+        return cb(err);
+      }
+
+      var keyUrl = createKey(entry.key);
+
+      console.log('inserting entry with key %j', entry.key);
+      request(keyUrl, {
+        method: 'PUT',
+        headers: entry.headers,
+        body: entry.data
+      }, function(err, response){
+        if(err || (response && response.statusCode !== 204)){
+          console.log(err, response && response.statusCode)
+          return cb(err || (response && response.statusCode));
+        }
+        else{
+          return cb();
+        }
       });
     }, function(err) {
       if (err) {
@@ -126,9 +150,13 @@ var isValidJSON = function(data){
   }
 };
 
+var createKey = function(key){
+  return [riakUrl, bucket, key].join('/');
+};
+
 function processKey(key, cb) {
   console.log('exporting key ' + key);
-  var keyUrl = [riakUrl, bucket, key].join('/');
+  var keyUrl = createKey(key);
   request(keyUrl, function(err, response, body){
     if(err || response.statusCode !== 200){
       console.log('ERROR', err, response && response.statusCode, keyUrl);
@@ -136,7 +164,7 @@ function processKey(key, cb) {
     }
 
     var out = {
-      key: [bucket, key],
+      key: key,
       headers: response.headers
     };
 
@@ -153,7 +181,8 @@ function processKey(key, cb) {
     if(program.pretty){
       options = options.concat([null, '\t']);
     }
-    fs.appendFileSync(program.file, JSON.stringify.apply(this, options) + '\n');
+
+    fs.appendFileSync(program.file, JSON.stringify.apply(this, options) + '\r\n');
 
     return cb();
   });
