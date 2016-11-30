@@ -2,6 +2,8 @@
 
 var program = require('commander');
 var async = require('async');
+var request = require('request');
+var url = require('url');
 
 program
     .version('0.0.8')
@@ -30,6 +32,7 @@ var openWrites = 0;
 var db = require("riak-js").getClient({host: program.host, port: program.port});
 var fs = require('fs');
 var deleteKeys = !program.import && !!program.delete;
+var riakUrl = 'http://' + program.host + ":" + program.port + '/riak';
 
 if (program.import) {
   importToBucket();
@@ -80,7 +83,6 @@ function exportFromBucket() {
     throw new Error('the output file already exists');
   }
   console.log('fetching bucket '+bucket+' from '+program.host+':'+program.port);
-  fs.appendFileSync(program.file, '[');
   db.keys(bucket,{keys:'stream'}, function (err) {
     if (err) {
       console.log('failed to fetch keys');
@@ -96,7 +98,6 @@ function end() {
   if (!receivedAll) {
     return;
   }
-  fs.appendFileSync(program.file, ']');
   if (count<=0) {
     console.log('nothing exported');
   } else {
@@ -116,61 +117,44 @@ function handleKeys(keys) {
   console.log('queue size: ' + q.length());
 }
 
-var first = true;
+var isValidJSON = function(data){
+  try{
+    return JSON.parse(data);
+  }
+  catch(err){
+    return false
+  }
+};
+
 function processKey(key, cb) {
   console.log('exporting key ' + key);
-  db.get(bucket,key, function(err, obj, meta) {
-    var out = {key: key};
-    out.indexes = extractIndexes(meta);
-    out.data = obj;
-    if (program.meta) {
-      out.meta = meta;
+  var keyUrl = [riakUrl, bucket, key].join('/');
+  request(keyUrl, function(err, response, body){
+    if(err || response.statusCode !== 200){
+      console.log('ERROR', err, response && response.statusCode, keyUrl);
+      return cb();
     }
-    out.meta = meta;
-    if (!first) {
-      fs.appendFileSync(program.file, ',');
+
+    var out = {
+      key: [bucket, key],
+      headers: response.headers
+    };
+
+    var data = isValidJSON(body);
+
+    if(data){
+      out.data = data;
     }
+    else{
+      out.data = new Buffer( body, 'binary' ).toString('base64');
+    }
+
     var options = [out];
     if(program.pretty){
       options = options.concat([null, '\t']);
     }
-    fs.appendFileSync(program.file, JSON.stringify.apply(this, options));
-    first=false;
+    fs.appendFileSync(program.file, JSON.stringify.apply(this, options) + '\n');
 
-    if (!deleteKeys) {
-      return cb();
-    }
-
-    db.remove(bucket, key, function (err) {
-      if(err){
-        console.log(bucket, key, err)
-      }
-      cb();
-    });
+    return cb();
   });
 }
-
-function extractIndexes(meta) {
-  var indexes = {};
-  var regex = /^x-riak-index-(.*)_(.*)$/;
-  if (meta != null) {
-    for (var key in meta.headers) {
-      var matches = key.match(regex);
-      if (matches) {
-        var name = matches[1];
-        var type = matches[2];
-        var val = meta.headers[key];
-        if (type==='int') {
-          val = parseInt(val, 10);
-        }
-        indexes[name] = val;
-      }
-    }
-  }
-  return indexes;
-}
-
-
-
-
-

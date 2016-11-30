@@ -23,14 +23,17 @@
   "dependencies": {
     "async": "^0.9.0",
     "commander": "^2.3.0",
+    "request": "^2.79.0",
     "riak-js": "^0.10.2"
   },
-  "contributors": [{
-    "name": "Craig Thayer",
-    "email": "cthayer@sazze.com"
-  },
-  {
-    "name": "Xavier Sellier",
-    "url": "https://www.linkedin.com/pub/xavier-sellier/43/7b4/425"
-  }]
+  "contributors": [
+    {
+      "name": "Craig Thayer",
+      "email": "cthayer@sazze.com"
+    },
+    {
+      "name": "Xavier Sellier",
+      "url": "https://www.linkedin.com/pub/xavier-sellier/43/7b4/425"
+    }
+  ]
 }
