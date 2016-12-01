@@ -63,7 +63,8 @@ function importToBucket() {
         entry = JSON.parse(entry);
 
         if(typeof entry.data !== typeof {}){
-          entry.data = new Buffer(entry.data, 'base64').toString();
+          entry.data = new Buffer(entry.data, 'base64');
+          entry.headers['content-encoding'] = entry.headers['content-encoding'] || 'gzip';
         }
         else{
           entry.data = JSON.stringify(entry.data);
@@ -76,13 +77,14 @@ function importToBucket() {
       var keyUrl = createKey(entry.key);
 
       console.log('inserting entry with key %j', entry.key);
+
       request(keyUrl, {
         method: 'PUT',
         headers: entry.headers,
         body: entry.data
       }, function(err, response){
         if(err || (response && response.statusCode !== 204)){
-          console.log(err, response && response.statusCode)
+          console.log(err, response && response.statusCode);
           return cb(err || (response && response.statusCode));
         }
         else{
@@ -157,7 +159,8 @@ var createKey = function(key){
 function processKey(key, cb) {
   console.log('exporting key ' + key);
   var keyUrl = createKey(key);
-  request(keyUrl, function(err, response, body){
+
+  request(keyUrl, {encoding: null}, function(err, response, body){
     if(err || response.statusCode !== 200){
       console.log('ERROR', err, response && response.statusCode, keyUrl);
       return cb();
@@ -174,10 +177,11 @@ function processKey(key, cb) {
       out.data = data;
     }
     else{
-      out.data = new Buffer( body, 'binary' ).toString('base64');
+      out.data = body.toString('base64');
     }
 
     var options = [out];
+
     if(program.pretty){
       options = options.concat([null, '\t']);
     }
