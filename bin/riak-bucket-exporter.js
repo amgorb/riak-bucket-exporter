@@ -29,9 +29,7 @@ program.meta = (program.meta==='true')  || false;
 program.pretty = (program.pretty==='true') || false;
 var count = 0;
 var openWrites = 0;
-var db = require("riak-js").getClient({host: program.host, port: program.port});
 var fs = require('fs');
-var deleteKeys = !program.import && !!program.delete;
 var riakUrl = 'http://' + program.host + ":" + program.port + '/riak';
 
 if (program.import) {
@@ -109,15 +107,23 @@ function exportFromBucket() {
     throw new Error('the output file already exists');
   }
   console.log('fetching bucket '+bucket+' from '+program.host+':'+program.port);
-  db.keys(bucket,{keys:'stream'}, function (err) {
+  var bucketKeysUrl = [riakUrl, bucket].join('/') + '?keys=stream';
+  console.log(bucketKeysUrl);
+  request(bucketKeysUrl, function(err){
     if (err) {
       console.log('failed to fetch keys');
       console.log(err);
     }
-  }).on('keys', handleKeys).on('end', function() {
+  }).on('data', function(data) {
+    // decompressed data as it is received
+    var parsedData = isValidJSON(data);
+    if(parsedData && parsedData.keys){
+      handleKeys(parsedData.keys);
+    }
+  }).on('end', function(){
     console.log('received all keys');
     receivedAll = true;
-  }).start();
+  });
 }
 
 function end() {
